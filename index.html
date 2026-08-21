@@ -59,6 +59,23 @@
       font-weight: 700;
       cursor: pointer;
     }
+    #nickname-fallback {
+      display: flex;
+      width: 100%;
+      min-height: 56px;
+      margin-top: 18px;
+      padding: 12px 18px;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #111;
+      border-radius: 12px;
+      background: #fff;
+      color: #111;
+      font-weight: 700;
+      text-align: center;
+      text-decoration: none;
+    }
+    #nickname-fallback[hidden] { display: none; }
     @media (max-width: 420px) {
       body { padding: 24px 16px 40px; }
     }
@@ -72,6 +89,7 @@
       <input id="link-code" autocomplete="one-time-code" placeholder="例：A1B2C3-D4E5F6-A1B2C3-D4E5F6">
       <button type="submit">このLINEを連携する</button>
     </form>
+    <a id="nickname-fallback" href="https://script.google.com/macros/s/AKfycbw4OxzWgFUEAlkP6KF414oCQgF54Y7okG4fhd_0nMCfew5YBJYqqekt2XlvErlmnj0_/exec?page=ticket" target="_top" rel="noreferrer" hidden>ニックネームでマイページを開く</a>
   </main>
   <script src="./config.js"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -79,10 +97,12 @@
 const bridge = window.LIFF_BRIDGE_CONFIG || {};
 const HANDOFF_URL = 'https://script.google.com/macros/s/AKfycbw4OxzWgFUEAlkP6KF414oCQgF54Y7okG4fhd_0nMCfew5YBJYqqekt2XlvErlmnj0_/exec';
 const status = document.getElementById('status');
+const nicknameFallback = document.getElementById('nickname-fallback');
+function showNicknameFallback() { nicknameFallback.hidden=false; }
 function post(route, values) { const form = document.createElement('form'); form.method='post'; form.action=HANDOFF_URL; form.target='_self'; Object.entries(Object.assign({route}, values)).forEach(([name,value])=>{ const input=document.createElement('input'); input.type='hidden'; input.name=name; input.value=value; form.appendChild(input); }); document.body.appendChild(form); form.submit(); }
-async function start() { try { if (!bridge.liffId) throw new Error('config'); await liff.init({liffId:bridge.liffId}); const idToken=liff.getIDToken(); if (!idToken) throw new Error('id_token'); post('line_handoff',{id_token:idToken}); } catch (_) { status.textContent='LINE本人確認を開始できませんでした。LINEからもう一度開いてください。'; } }
+async function start() { try { if (!bridge.liffId) throw new Error('config'); await liff.init({liffId:bridge.liffId}); const idToken=liff.getIDToken(); if (!idToken) throw new Error('id_token'); post('line_handoff',{id_token:idToken}); } catch (_) { status.textContent='LINE本人確認を開始できませんでした。ニックネームでもマイページを開けます。'; showNicknameFallback(); } }
 const linkSession = new URLSearchParams(location.search).get('link_session');
-if (linkSession) { status.textContent=new URLSearchParams(location.search).get('link_error') || '初回のみ、FATIMATAから受け取った連携コードを入力してください。'; const form=document.getElementById('link-form'); form.hidden=false; form.addEventListener('submit', event=>{ event.preventDefault(); const code=document.getElementById('link-code').value.trim(); if (!code) return; post('line_link',{link_session:linkSession,link_code:code}); }); } else start();
+if (linkSession) { status.textContent=new URLSearchParams(location.search).get('link_error') || '初回のみ、FATIMATAから受け取った連携コードを入力してください。'; const form=document.getElementById('link-form'); form.hidden=false; showNicknameFallback(); form.addEventListener('submit', event=>{ event.preventDefault(); const code=document.getElementById('link-code').value.trim(); if (!code) return; post('line_link',{link_session:linkSession,link_code:code}); }); } else start();
   </script>
 </body>
 </html>
