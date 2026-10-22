@@ -101,13 +101,13 @@ const BOOKING_URL = HANDOFF_URL + '?page=booking';
 const status = document.getElementById('status');
 const nicknameFallback = document.getElementById('nickname-fallback');
 const requestedPurpose = new URLSearchParams(location.search).get('purpose');
-const purpose = requestedPurpose === 'booking' ? 'booking' : 'ticket';
+const purpose = requestedPurpose === 'booking' ? 'booking' : requestedPurpose === 'event' ? 'event' : 'ticket';
 if (purpose === 'booking') { nicknameFallback.href=BOOKING_URL; nicknameFallback.textContent='ニックネームで予約ページを開く'; }
 function showNicknameFallback() { nicknameFallback.hidden=false; }
 function post(route, values) { const form = document.createElement('form'); form.method='post'; form.action=HANDOFF_URL; form.target='_self'; Object.entries(Object.assign({route}, values)).forEach(([name,value])=>{ const input=document.createElement('input'); input.type='hidden'; input.name=name; input.value=value; form.appendChild(input); }); document.body.appendChild(form); form.submit(); }
-async function start() { try { if (!bridge.liffId) throw new Error('config'); await liff.init({liffId:bridge.liffId}); const idToken=liff.getIDToken(); if (!idToken) throw new Error('id_token'); if (purpose === 'booking') post('line_handoff',{id_token:idToken,purpose:'booking'}); else post('line_handoff',{id_token:idToken}); } catch (_) { status.textContent=purpose === 'booking' ? 'LINE本人確認を開始できませんでした。ニックネームでも予約ページを開けます。' : 'LINE本人確認を開始できませんでした。ニックネームでもマイページを開けます。'; showNicknameFallback(); } }
+async function start() { try { if (!bridge.liffId) throw new Error('config'); await liff.init({liffId:bridge.liffId}); const idToken=liff.getIDToken(); if (!idToken) throw new Error('id_token'); if (purpose === 'booking') post('line_handoff',{id_token:idToken,purpose:'booking'}); else if(purpose === 'event') post('line_handoff',{id_token:idToken,purpose:'event'}); else post('line_handoff',{id_token:idToken}); } catch (_) { status.textContent=purpose === 'booking' ? 'LINE本人確認を開始できませんでした。ニックネームでも予約ページを開けます。' : 'LINE本人確認を開始できませんでした。ニックネームでもマイページを開けます。'; if(purpose === 'event') status.textContent='LINEで本人確認できませんでした。LINEからイベントの入口を開き直してください。'; else showNicknameFallback(); } }
 const linkSession = new URLSearchParams(location.search).get('link_session');
-if (linkSession) { status.textContent=new URLSearchParams(location.search).get('link_error') || '初回のみ、FATIMATAから受け取った連携コードを入力してください。'; const form=document.getElementById('link-form'); form.hidden=false; showNicknameFallback(); form.addEventListener('submit', event=>{ event.preventDefault(); const code=document.getElementById('link-code').value.trim(); if (!code) return; post('line_link',{link_session:linkSession,link_code:code}); }); } else start();
+if (linkSession) { status.textContent=new URLSearchParams(location.search).get('link_error') || '初回のみ、FATIMATAから受け取った連携コードを入力してください。'; const form=document.getElementById('link-form'); form.hidden=false; if(purpose !== 'event') showNicknameFallback(); form.addEventListener('submit', event=>{ event.preventDefault(); const code=document.getElementById('link-code').value.trim(); if (!code) return; post('line_link',Object.assign({link_session:linkSession,link_code:code},purpose === 'event'?{purpose:'event'}:{})); }); } else start();
   </script>
 </body>
 </html>
