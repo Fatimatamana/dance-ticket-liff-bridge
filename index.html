@@ -100,12 +100,75 @@ const TICKET_URL = HANDOFF_URL + '?page=ticket';
 const BOOKING_URL = HANDOFF_URL + '?page=booking';
 const status = document.getElementById('status');
 const nicknameFallback = document.getElementById('nickname-fallback');
-const requestedPurpose = new URLSearchParams(location.search).get('purpose');
-const purpose = requestedPurpose === 'booking' ? 'booking' : requestedPurpose === 'event' ? 'event' : 'ticket';
+function getBridgeQuery() {
+  const query = new URLSearchParams(location.search);
+  if (query.get('purpose')) return query;
+  // LIFF's primary redirect carries the destination and login marker together.
+  const state = query.get('liff.state') || '';
+  if (state.startsWith('?') || state.startsWith('/?')) {
+    const stateQuery = new URLSearchParams(state.slice(state.indexOf('?') + 1));
+    if (stateQuery.get('purpose') === 'event') return stateQuery;
+  }
+  return query;
+}
+function getBridgePurpose() {
+  const requested = getBridgeQuery().get('purpose');
+  return requested === 'booking' ? 'booking' : requested === 'event' ? 'event' : 'ticket';
+}
+let purpose = getBridgePurpose();
+if (purpose === 'event') document.title = 'FATIMATA イベント参加表明';
 if (purpose === 'booking') { nicknameFallback.href=BOOKING_URL; nicknameFallback.textContent='ニックネームで予約ページを開く'; }
 function showNicknameFallback() { nicknameFallback.hidden=false; }
 function post(route, values) { const form = document.createElement('form'); form.method='post'; form.action=HANDOFF_URL; form.target='_self'; Object.entries(Object.assign({route}, values)).forEach(([name,value])=>{ const input=document.createElement('input'); input.type='hidden'; input.name=name; input.value=value; form.appendChild(input); }); document.body.appendChild(form); form.submit(); }
-async function start() { try { if (!bridge.liffId) throw new Error('config'); await liff.init({liffId:bridge.liffId}); const idToken=liff.getIDToken(); if (!idToken) throw new Error('id_token'); if (purpose === 'booking') post('line_handoff',{id_token:idToken,purpose:'booking'}); else if(purpose === 'event') post('line_handoff',{id_token:idToken,purpose:'event'}); else post('line_handoff',{id_token:idToken}); } catch (_) { status.textContent=purpose === 'booking' ? 'LINE本人確認を開始できませんでした。ニックネームでも予約ページを開けます。' : 'LINE本人確認を開始できませんでした。ニックネームでもマイページを開けます。'; if(purpose === 'event') status.textContent='LINEで本人確認できませんでした。LINEからイベントの入口を開き直してください。'; else showNicknameFallback(); } }
+function showEventAuthFailure(stage) {
+  // Fixed, non-secret stage names only. Do not log SDK errors, tokens or URLs.
+  status.dataset.authStage = stage;
+  status.textContent = 'LINEの本人確認を完了できませんでした。現在の画面で操作を繰り返さず、FATIMATAへお知らせください。';
+}
+async function start() {
+  if (purpose !== 'event') {
+    // Keep the existing MyPage and booking authentication behavior.
+    try {
+      if (!bridge.liffId) throw new Error('config');
+      await liff.init({liffId:bridge.liffId});
+      const idToken=liff.getIDToken();
+      if (!idToken) throw new Error('id_token');
+      if (purpose === 'booking') post('line_handoff',{id_token:idToken,purpose:'booking'});
+      else post('line_handoff',{id_token:idToken});
+    } catch (_) {
+      status.textContent=purpose === 'booking' ? 'LINE本人確認を開始できませんでした。ニックネームでも予約ページを開けます。' : 'LINE本人確認を開始できませんでした。ニックネームでもマイページを開けます。';
+      showNicknameFallback();
+    }
+    return;
+  }
+  let stage = 'config_missing';
+  try {
+    if (!bridge.liffId) throw new Error('config');
+    stage = 'sdk_unavailable';
+    if (typeof liff === 'undefined') throw new Error('sdk');
+    stage = 'init_failed';
+    await liff.init({liffId:bridge.liffId});
+    purpose = getBridgePurpose();
+    if (purpose !== 'event') { showEventAuthFailure('event_destination_missing'); return; }
+    if (!liff.isLoggedIn()) {
+      if (liff.isInClient()) { showEventAuthFailure('client_not_logged_in'); return; }
+      if (getBridgeQuery().get('event_login') === '1') {
+        showEventAuthFailure('login_incomplete'); return;
+      }
+      stage = 'login_failed';
+      status.dataset.authStage = 'login_started';
+      status.textContent = 'LINEの本人確認へ進んでいます。';
+      liff.login({redirectUri:'https://fatimatamana.github.io/dance-ticket-liff-bridge/?purpose=event&event_login=1'});
+      return;
+    }
+    stage = 'id_token_missing';
+    const idToken = liff.getIDToken();
+    if (!idToken) throw new Error('id_token');
+    stage = 'handoff_post_failed';
+    post('line_handoff',{id_token:idToken,purpose:'event'});
+  } catch (_) { showEventAuthFailure(stage); }
+}
+
 const linkSession = new URLSearchParams(location.search).get('link_session');
 if (linkSession) { status.textContent=new URLSearchParams(location.search).get('link_error') || '初回のみ、FATIMATAから受け取った連携コードを入力してください。'; const form=document.getElementById('link-form'); form.hidden=false; if(purpose !== 'event') showNicknameFallback(); form.addEventListener('submit', event=>{ event.preventDefault(); const code=document.getElementById('link-code').value.trim(); if (!code) return; post('line_link',Object.assign({link_session:linkSession,link_code:code},purpose === 'event'?{purpose:'event'}:{})); }); } else start();
   </script>
